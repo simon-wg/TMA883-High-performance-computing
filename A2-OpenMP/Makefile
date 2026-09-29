@@ -1,6 +1,6 @@
 CC = gcc
 CPPFLAGS = -Iinc
-CFLAGS = -Wall -Wextra -Wpedantic -O2 -fopenmp -fno-omit-frame-pointer -g
+CFLAGS = -Wall -Wextra -Wpedantic -O2 -fopenmp -fno-omit-frame-pointer -g -march=native -ffast-math
 LDFLAGS = -fopenmp
 LDLIBS = -lm
 

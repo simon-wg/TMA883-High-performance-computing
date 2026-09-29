@@ -1,6 +1,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <math.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "helpers.h"
@@ -30,10 +31,14 @@ int main(int argc, char **argv)
 
 	printf("threads=%d, lines=%zu\n", threads, lines);
 
+	if (threads > 0)
+		omp_set_num_threads(threads);
+
+#pragma omp parallel for reduction(+ : distances[0 : MAX_DIST_INDEX])
 	for (size_t i = 0; i < lines; i++) {
 		for (size_t j = i + 1; j < lines; j++) {
 			double dist = calculate_distance(&p[i], &p[j]);
-			int dist_index = (int)lround(dist * 100);
+			int dist_index = (int)(dist * 100 + 0.5);
 			distances[dist_index]++;
 		}
 	}
