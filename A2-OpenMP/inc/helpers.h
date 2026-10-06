@@ -15,4 +15,4 @@ size_t read_file(const char *filepath, struct point *result_points);
 
 int parse_line(FILE *file, struct point *p);
 
-double calculate_distance(struct point *p1, struct point *p2);
+int calculate_distance_index(struct point *p1, struct point *p2);

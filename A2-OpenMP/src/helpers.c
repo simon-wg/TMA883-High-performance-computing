@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "helpers.h"
@@ -35,17 +36,20 @@ int parse_line(FILE *files, struct point *p)
 		exit(EXIT_FAILURE);
 	}
 
-	p->x = (int16_t)(x * 1000);
-	p->y = (int16_t)(y * 1000);
-	p->z = (int16_t)(z * 1000);
+	p->x = (uint16_t)(x * 1000);
+	p->y = (uint16_t)(y * 1000);
+	p->z = (uint16_t)(z * 1000);
 
 	return 1;
 }
 
-double calculate_distance(struct point *p1, struct point *p2)
+int calculate_distance_index(struct point *p1, struct point *p2)
 {
-	double dx = ((double)p2->x) / 1000. - ((double)p1->x) / 1000.;
-	double dy = ((double)p2->y) / 1000. - ((double)p1->y) / 1000.;
-	double dz = ((double)p2->z) / 1000. - ((double)p1->z) / 1000.;
-	return sqrt(dx * dx + dy * dy + dz * dz);
+	int32_t dx = p1->x - p2->x;
+	int32_t dy = p1->y - p2->y;
+	int32_t dz = p1->z - p2->z;
+
+	int64_t distance_squared = dx * dx + dy * dy + dz * dz;
+	double dist = sqrt((double)distance_squared);
+	return (int)(dist / 10 + 0.5);
 }

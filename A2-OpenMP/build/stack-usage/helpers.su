@@ -1,3 +1,0 @@
-src/helpers.c:24:5:parse_line	80	static
-src/helpers.c:6:8:read_file	48	static
-src/helpers.c:45:8:calculate_distance	8	static
