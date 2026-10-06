@@ -36,9 +36,9 @@ int parse_line(FILE *files, struct point *p)
 		exit(EXIT_FAILURE);
 	}
 
-	p->x = (uint16_t)(x * 1000);
-	p->y = (uint16_t)(y * 1000);
-	p->z = (uint16_t)(z * 1000);
+	p->x = (int16_t)(x * 1000);
+	p->y = (int16_t)(y * 1000);
+	p->z = (int16_t)(z * 1000);
 
 	return 1;
 }

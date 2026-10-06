@@ -25,12 +25,12 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (threads > 0)
+		omp_set_num_threads(threads);
+
 	struct point p[MAX_SIZE];
 
 	size_t lines = read_file(filepath, p);
-
-	if (threads > 0)
-		omp_set_num_threads(threads);
 
 #pragma omp parallel for reduction(+ : distances[0 : MAX_DIST_INDEX]) \
 	schedule(dynamic)
