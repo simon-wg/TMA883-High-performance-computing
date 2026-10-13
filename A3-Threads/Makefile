@@ -7,4 +7,4 @@ all:
 	$(CC) $(CFLAGS) newton.c -o newton
 
 clean:
-	rm -rf newton
+	rm -rf newton *.png *.ppm perf.data*
