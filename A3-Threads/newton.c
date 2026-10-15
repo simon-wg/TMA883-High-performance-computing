@@ -1,39 +1,22 @@
+#include "file.h"
+#include "newton.h"
+
 #include <assert.h>
 #include <complex.h>
 #include <getopt.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <threads.h>
 #include <time.h>
-
-#define MAX_ITERATIONS 50
-#define N_ROOTS 12
 
 uint8_t **attractors;
 uint8_t **convergence;
 bool *ready;
 char attractors_name[32];
 char convergence_name[32];
-
-const char colors[][13] = {
-	"230 025 075 ", // 0  red
-	"060 180 075 ", // 1  green
-	"000 130 200 ", // 2  blue
-	"255 225 025 ", // 3  yellow
-	"245 130 048 ", // 4  orange
-	"145 030 180 ", // 5  purple
-	"070 240 240 ", // 6  cyan
-	"240 050 230 ", // 7  magenta
-	"170 110 040 ", // 8  brown
-	"000 000 000 ", // 9  black      (stopped near origin)
-	"128 128 128 ", // 10 gray       (too large)
-	"255 255 255 " // 11 white      (50 steps)
-};
 
 char shades[MAX_ITERATIONS + 1][10];
 
@@ -42,16 +25,11 @@ size_t size = 0;
 int thread_count = 1;
 complex double roots[N_ROOTS];
 
-struct result {
-	uint8_t attractor;
-	uint8_t steps;
-};
-
 //x_{k+1} = x_k - f(x_k) / f'(x_k)
 
 // x_n = x/d * (d - 1 + (1/x^d))
 
-static inline complex double newton_step(complex double x)
+static complex double newton_step(complex double x)
 {
 	// x_n = x - (x^d - 1) / (d * x^(d-1))
 	// x_n = x_n - x_n / d + 1. / (d * x_n ^ (d-1));
@@ -92,7 +70,7 @@ static inline complex double newton_step(complex double x)
 	}
 }
 
-ssize_t dist_to_roots_too_small(complex double x)
+static ssize_t dist_to_roots_too_small(complex double x)
 {
 	ssize_t i;
 	for (i = 0; i < d; i++) {
@@ -117,7 +95,7 @@ static inline bool parts_too_large(complex double x)
 	       cimag(x) > 100000.0 || cimag(x) < -100000.0;
 }
 
-void init_roots()
+static void init_roots()
 {
 	for (int i = 0; i < d; i++) {
 		roots[i] =
@@ -125,7 +103,7 @@ void init_roots()
 	}
 }
 
-void find_root(complex double x_0, struct result *res)
+static void find_root(complex double x_0, struct result *res)
 {
 	complex double x_n = x_0;
 	int r;
@@ -152,7 +130,7 @@ void find_root(complex double x_0, struct result *res)
 	return;
 }
 
-int find_roots(void *arg)
+static int find_roots(void *arg)
 {
 	int thread_id = *(int *)arg;
 	struct result res = {};
@@ -166,62 +144,6 @@ int find_roots(void *arg)
 		}
 		ready[row] = true;
 	}
-	return 0;
-}
-
-void write_attractors_header(FILE *f)
-{
-	char header[64];
-	int len = sprintf(header, "P3\n%zu %zu\n255\n", size, size);
-	fwrite(header, 1, len, f);
-}
-
-void write_attractors_to_ppm(FILE *f, int row, char *buffer)
-{
-	for (size_t col = 0; col < size; col++) {
-		char *color = colors[attractors[row][col]];
-		memcpy(&buffer[12 * col], color, 12);
-	}
-	fwrite(buffer, 1, 12 * size, f);
-}
-
-void write_convergence_header(FILE *f)
-{
-	char header[64];
-	int len = sprintf(header, "P3\n%zu %zu\n%d\n", size, size,
-			  MAX_ITERATIONS);
-	fwrite(header, 1, len, f);
-}
-
-void write_convergence_to_ppm(FILE *f, int row, char *buffer)
-{
-	for (size_t col = 0; col < size; col++) {
-		uint8_t steps = convergence[row][col];
-		memcpy(&buffer[9 * col], shades[steps], 9);
-	}
-	fwrite(buffer, 1, 9 * size, f);
-}
-
-int write(void *_)
-{
-	size_t next_row = 0;
-	char *buffer = malloc(12 * size + 1);
-	FILE *fa = fopen(attractors_name, "w");
-	FILE *fc = fopen(convergence_name, "w");
-	write_attractors_header(fa);
-	write_convergence_header(fc);
-	for (;;) {
-		if (next_row == size)
-			break;
-		if (ready[next_row]) {
-			write_attractors_to_ppm(fa, next_row, buffer);
-			write_convergence_to_ppm(fc, next_row, buffer);
-			next_row++;
-		}
-	}
-	fclose(fa);
-	fclose(fc);
-	free(buffer);
 	return 0;
 }
 
@@ -265,7 +187,7 @@ int main(int argc, char **argv)
 		convergence[i] = &convergence_entries[i * size];
 
 	ready = (bool *)malloc(sizeof(bool) * size);
-	for (int i = 0; i < size; ++i)
+	for (size_t i = 0; i < size; ++i)
 		ready[i] = false;
 
 	thrd_t thread[thread_count];
