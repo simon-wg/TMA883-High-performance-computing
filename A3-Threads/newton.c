@@ -9,30 +9,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <threads.h>
+#include <time.h>
 
 #define MAX_ITERATIONS 50
 #define N_ROOTS 12
 
 uint8_t **attractors;
-uint8_t **convergences;
+uint8_t **convergence;
+bool *ready;
+char attractors_name[32];
+char convergence_name[32];
 
-char *colors[] = {
-	"230 25 75 ", // 0  red
-	"60 180 75 ", // 1  green
-	"0 130 200 ", // 2  blue
-	"255 225 25 ", // 3  yellow
-	"245 130 48 ", // 4  orange
-	"145 30 180 ", // 5  purple
-	"70 240 240 ", // 6  cyan
-	"240 50 230 ", // 7  magenta
-	"170 110 40 ", // 8  brown
-	"0 0 0 ", // 9  black      (stopped near origin)
+const char colors[][13] = {
+	"230 025 075 ", // 0  red
+	"060 180 075 ", // 1  green
+	"000 130 200 ", // 2  blue
+	"255 225 025 ", // 3  yellow
+	"245 130 048 ", // 4  orange
+	"145 030 180 ", // 5  purple
+	"070 240 240 ", // 6  cyan
+	"240 050 230 ", // 7  magenta
+	"170 110 040 ", // 8  brown
+	"000 000 000 ", // 9  black      (stopped near origin)
 	"128 128 128 ", // 10 gray       (too large)
 	"255 255 255 " // 11 white      (50 steps)
 };
 
+char shades[MAX_ITERATIONS + 1][10];
+
 int d = 0;
-int size = 0;
+size_t size = 0;
+int thread_count = 1;
 complex double roots[N_ROOTS];
 
 struct result {
@@ -145,54 +152,87 @@ void find_root(complex double x_0, struct result *res)
 	return;
 }
 
-void generate_attractors_ppm()
+int find_roots(void *arg)
 {
-	FILE *f = fopen("newton_attractors.ppm", "w");
-
-	char header[64];
-	int len = sprintf(header, "P3\n%d %d\n255\n", size, size);
-	fwrite(header, 1, len, f);
-
-	for (int i = 0; i < size; i++) {
-		for (int j = 0; j < size; j++) {
-			char *color = colors[attractors[i][j]];
-			fwrite(color, 1, strlen(color), f);
+	int thread_id = *(int *)arg;
+	struct result res = {};
+	for (size_t row = thread_id; row < size; row += thread_count) {
+		double im = 2.0 - 4.0 * row / (size - 1);
+		for (size_t col = 0; col < size; col++) {
+			double re = -2.0 + 4.0 * col / (size - 1);
+			find_root(CMPLX(re, im), &res);
+			attractors[row][col] = res.attractor;
+			convergence[row][col] = res.steps;
 		}
+		ready[row] = true;
 	}
-
-	fclose(f);
+	return 0;
 }
 
-void generate_convergence_ppm()
+void write_attractors_header(FILE *f)
 {
-	FILE *f = fopen("newton_convergences.ppm", "w");
-
 	char header[64];
-	int len =
-		sprintf(header, "P2\n%d %d\n%d\n", size, size, MAX_ITERATIONS);
+	int len = sprintf(header, "P3\n%zu %zu\n255\n", size, size);
 	fwrite(header, 1, len, f);
+}
 
-	char color[8];
+void write_attractors_to_ppm(FILE *f, int row, char *buffer)
+{
+	for (size_t col = 0; col < size; col++) {
+		char *color = colors[attractors[row][col]];
+		memcpy(&buffer[12 * col], color, 12);
+	}
+	fwrite(buffer, 1, 12 * size, f);
+}
 
-	for (int i = 0; i < size; i++) {
-		for (int j = 0; j < size; j++) {
-			int len = sprintf(color, "%d\n", convergences[i][j]);
-			fwrite(color, 1, len, f);
+void write_convergence_header(FILE *f)
+{
+	char header[64];
+	int len = sprintf(header, "P3\n%zu %zu\n%d\n", size, size,
+			  MAX_ITERATIONS);
+	fwrite(header, 1, len, f);
+}
+
+void write_convergence_to_ppm(FILE *f, int row, char *buffer)
+{
+	for (size_t col = 0; col < size; col++) {
+		uint8_t steps = convergence[row][col];
+		memcpy(&buffer[9 * col], shades[steps], 9);
+	}
+	fwrite(buffer, 1, 9 * size, f);
+}
+
+int write(void *_)
+{
+	size_t next_row = 0;
+	char *buffer = malloc(12 * size + 1);
+	FILE *fa = fopen(attractors_name, "w");
+	FILE *fc = fopen(convergence_name, "w");
+	write_attractors_header(fa);
+	write_convergence_header(fc);
+	for (;;) {
+		if (next_row == size)
+			break;
+		if (ready[next_row]) {
+			write_attractors_to_ppm(fa, next_row, buffer);
+			write_convergence_to_ppm(fc, next_row, buffer);
+			next_row++;
 		}
 	}
-
-	fclose(f);
+	fclose(fa);
+	fclose(fc);
+	free(buffer);
+	return 0;
 }
 
 int main(int argc, char **argv)
 {
 	int opt;
-	int threads = 1;
 
 	while ((opt = getopt(argc, argv, "+t:l:")) != -1) {
 		switch (opt) {
 		case 't':
-			threads = strtol(optarg, NULL, 0);
+			thread_count = strtol(optarg, NULL, 0);
 			break;
 		case 'l':
 			size = strtol(optarg, NULL, 0);
@@ -206,37 +246,47 @@ int main(int argc, char **argv)
 	}
 
 	d = strtol(argv[optind], NULL, 0);
+	sprintf(attractors_name, "newton_attractors_x%d.ppm", d);
+	sprintf(convergence_name, "newton_convergence_x%d.ppm", d);
 	init_roots();
+	for (int i = 0; i <= MAX_ITERATIONS; ++i)
+		sprintf(shades[i], "%02d %02d %02d\n", i, i, i);
 
-	attractors = malloc(sizeof *attractors * size);
+	attractors = (uint8_t **)malloc(sizeof *attractors * size);
 	uint8_t *attractors_entries =
-		malloc(sizeof *attractors_entries * size * size);
-	for (size_t i = 0; i < size; ++i) {
+		(uint8_t *)malloc(sizeof *attractors_entries * size * size);
+	for (size_t i = 0; i < size; ++i)
 		attractors[i] = &attractors_entries[i * size];
-	}
-	convergences = malloc(sizeof *convergences * size);
-	uint8_t *convergences_entries =
-		malloc(sizeof *convergences_entries * size * size);
-	for (size_t i = 0; i < size; ++i) {
-		convergences[i] = &convergences_entries[i * size];
+
+	convergence = (uint8_t **)malloc(sizeof *convergence * size);
+	uint8_t *convergence_entries =
+		(uint8_t *)malloc(sizeof *convergence_entries * size * size);
+	for (size_t i = 0; i < size; ++i)
+		convergence[i] = &convergence_entries[i * size];
+
+	ready = (bool *)malloc(sizeof(bool) * size);
+	for (int i = 0; i < size; ++i)
+		ready[i] = false;
+
+	thrd_t thread[thread_count];
+	int ids[thread_count];
+
+	for (int t = 0; t < thread_count; t++) {
+		ids[t] = t;
+		thrd_create(&thread[t], find_roots, &ids[t]);
 	}
 
-	struct result res = {};
-	for (size_t row = 0; row < size; row++) {
-		double im = 2.0 - 4.0 * row / (size - 1);
-		for (size_t col = 0; col < size; col++) {
-			double re = -2.0 + 4.0 * col / (size - 1);
-			find_root(CMPLX(re, im), &res);
-			attractors[row][col] = res.attractor;
-			convergences[row][col] = res.steps;
-		}
-	}
+	thrd_t writing_thread;
+	thrd_create(&writing_thread, write, NULL);
 
-	generate_attractors_ppm();
-	generate_convergence_ppm();
+	for (int t = 0; t < thread_count; t++)
+		thrd_join(thread[t], NULL);
 
-	free(convergences_entries);
-	free(convergences);
+	thrd_join(writing_thread, NULL);
+
+	free(ready);
+	free(convergence_entries);
+	free(convergence);
 	free(attractors_entries);
 	free(attractors);
 }
